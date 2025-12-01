@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import PlaceInfo from "../components/PlaceInfo";
 import { getBuildingDetail } from "../lib/buildingApi";
+// ▼▼▼ 즐겨찾기 API 및 스토어 임포트 추가 ▼▼▼
+import { getFavorites } from "../lib/favoriteApi";
+import { useDataStore } from "../stores/dataStore";
 import type { BuildingDetail } from "../types/api";
 
 export default function DetailPage() {
@@ -10,6 +13,18 @@ export default function DetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // ▼▼▼ 즐겨찾기 스토어 함수 가져오기 ▼▼▼
+  const { setFavorites } = useDataStore();
+
+  // ▼▼▼ [추가됨] 상세 페이지 접속 시 즐겨찾기 목록 불러오기 ▼▼▼
+  useEffect(() => {
+    // 즐겨찾기 목록을 서버에서 최신으로 가져옴
+    getFavorites()
+      .then((favs) => setFavorites(favs))
+      .catch((err) => console.warn("[DetailPage] failed to load favorites", err));
+  }, [setFavorites]);
+
+  // 건물 상세 정보 불러오기
   useEffect(() => {
     if (!id) {
       setError("잘못된 경로입니다.");
@@ -39,16 +54,6 @@ export default function DetailPage() {
       </div>
     );
 
-  const place = {
-    name: building.name,
-    category: building.category || "학교 건물",
-    address: building.address || "주소 정보 없음",
-    openingHours: building.openingHours || "00:00 ~ 00:00",
-    website: building.website || "https://www.bu.ac.kr",
-    image: building.image,
-    floors: building.floors,
-  };
-
   return (
     <div className="min-h-screen bg-gray-100 flex justify-center items-center p-6">
       <PlaceInfo
@@ -60,6 +65,8 @@ export default function DetailPage() {
         website={building.website}
         image={building.image}
         floors={building.floors}
+        description={building.description}
+        desc={building.desc}
       />
     </div>
   );

@@ -327,15 +327,7 @@ export default function App() {
               : ""
           }
 
-          <!-- 즐겨찾기 버튼 -->
-          <div id="${favId}"
-            style="
-              position:absolute; right:10px; top:10px;
-              cursor:pointer; font-size:20px;
-              color:#ccc;
-            ">
-            ☆
-          </div>
+          
 
           <!-- 상세 버튼 -->
           <button id="${btnId}"

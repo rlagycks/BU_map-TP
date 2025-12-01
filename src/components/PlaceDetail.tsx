@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import type { BuildingDetail, FloorSummary, RoomSummary, AvailableRoom } from "../types/api";
+import type { BuildingDetail, FloorSummary, AvailableRoom } from "../types/api";
 import { getAvailableRooms } from "../lib/floorApi";
+// ▼▼▼ 추가된 임포트 (아이콘, API, 스토어) ▼▼▼
+import { FaStar, FaRegStar } from "react-icons/fa";
+import { addFavorite, removeFavorite } from "../lib/favoriteApi";
+import { useDataStore } from "../stores/dataStore";
 
 type PlaceDetailProps = Pick<
   BuildingDetail,
@@ -12,7 +16,6 @@ export default function PlaceDetail({
   address,
   website,
   floors,
-  id,
   description,
   desc,
 }: PlaceDetailProps) {
@@ -21,6 +24,9 @@ export default function PlaceDetail({
   const [availableRooms, setAvailableRooms] = useState<AvailableRoom[] | null>(null);
   const [emptyLoading, setEmptyLoading] = useState(false);
   const [emptyError, setEmptyError] = useState<string | null>(null);
+
+  // ▼▼▼ 즐겨찾기 상태 관리 (Zustand) ▼▼▼
+  const { favorites, addFavorite: addFavStore, removeFavorite: removeFavStore } = useDataStore();
 
   // 기본 층 선택
   useEffect(() => {
@@ -51,6 +57,27 @@ export default function PlaceDetail({
   }, [activeTab, selectedFloor]);
 
   const floorOptions = useMemo(() => floors ?? [], [floors]);
+
+  // ▼▼▼ 강의실 즐겨찾기 토글 함수 ▼▼▼
+  const toggleRoomFavorite = async (room: AvailableRoom) => {
+    // 현재 이 방이 즐겨찾기 되어 있는지 확인
+    const isFav = favorites.some((f) => String(f.roomId) === String(room.roomId));
+    
+    try {
+      if (isFav) {
+        // 이미 즐겨찾기 상태면 -> 삭제 API 호출 & 스토어에서 제거
+        await removeFavorite(room.roomId);
+        removeFavStore(room.roomId);
+      } else {
+        // 즐겨찾기가 아니면 -> 추가 API 호출 & 스토어에 추가
+        await addFavorite(room.roomId);
+        addFavStore({ roomId: room.roomId });
+      }
+    } catch (err) {
+      console.error("즐겨찾기 변경 실패", err);
+      alert("오류가 발생했습니다. 로그인이 되어 있는지 확인해주세요.");
+    }
+  };
 
   return (
     <div className="mt-4 bg-white rounded-2xl shadow-inner w-full max-w-md overflow-hidden">
@@ -94,9 +121,10 @@ export default function PlaceDetail({
             )}
           </>
         )}
+
         {activeTab === "emptyroom" && (
           <div className="space-y-3">
-            {floorOptions.length > 1 && (
+            {floorOptions.length > 0 && (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">층 선택</span>
                 <select
@@ -123,12 +151,26 @@ export default function PlaceDetail({
             {!emptyLoading && !emptyError && (
               <>
                 {availableRooms?.length ? (
-                  <ul className="space-y-1">
-                    {availableRooms.map((r) => (
-                      <li key={r.roomId} className="text-sm text-gray-800">
-                        • {r.name || r.roomId}
-                      </li>
-                    ))}
+                  <ul className="space-y-2">
+                    {availableRooms.map((r) => {
+                      // 현재 방이 즐겨찾기 목록에 있는지 확인
+                      const isFav = favorites.some((f) => String(f.roomId) === String(r.roomId));
+                      return (
+                        <li key={r.roomId} className="flex items-center justify-between p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors">
+                          <span className="text-sm text-gray-800 font-medium">
+                            {r.name || r.roomNumber}
+                          </span>
+                          {/* ▼▼▼ 별 버튼 추가됨 ▼▼▼ */}
+                          <button 
+                            onClick={() => toggleRoomFavorite(r)} 
+                            className="text-lg focus:outline-none p-1 hover:scale-110 transition-transform"
+                            title={isFav ? "즐겨찾기 해제" : "즐겨찾기 추가"}
+                          >
+                            {isFav ? <FaStar color="gold" /> : <FaRegStar color="#ccc" />}
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
                   <div className="text-gray-500">빈 강의실이 없습니다.</div>
@@ -141,7 +183,6 @@ export default function PlaceDetail({
         {activeTab === "review" && (
           <div className="text-gray-500 italic">추가 필요</div>
         )}
-
       </div>
     </div>
   );
