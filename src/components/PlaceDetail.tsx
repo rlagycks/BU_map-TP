@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { BuildingDetail, FloorSummary, AvailableRoom } from "../types/api";
 import { getAvailableRooms } from "../lib/floorApi";
 import { FaStar, FaRegStar } from "react-icons/fa";
-import { addFavorite, removeFavorite } from "../lib/favoriteApi";
+// [수정] getFavorites 추가 임포트
+import { getFavorites, addFavorite, removeFavorite } from "../lib/favoriteApi";
 import { useDataStore } from "../stores/dataStore";
 
 type PlaceDetailProps = Pick<
@@ -24,8 +25,10 @@ export default function PlaceDetail({
   const [emptyLoading, setEmptyLoading] = useState(false);
   const [emptyError, setEmptyError] = useState<string | null>(null);
 
-  const { favorites, addFavorite: addFavStore, removeFavorite: removeFavStore } = useDataStore();
+  // [수정] setFavorites를 사용하기 위해 구조 분해 할당 추가
+  const { favorites, setFavorites } = useDataStore();
 
+  // 기본 층 선택
   useEffect(() => {
     if (floors && floors.length) {
       setSelectedFloor(floors[0]);
@@ -34,6 +37,7 @@ export default function PlaceDetail({
     }
   }, [floors]);
 
+  // 빈 강의실 조회
   useEffect(() => {
     if (activeTab !== "emptyroom") return;
     if (!selectedFloor) {
@@ -54,16 +58,24 @@ export default function PlaceDetail({
 
   const floorOptions = useMemo(() => floors ?? [], [floors]);
 
+  // [수정] 즐겨찾기 토글 로직 개선 (서버 동기화)
   const toggleRoomFavorite = async (room: AvailableRoom) => {
     const isFav = favorites.some((f) => String(f.roomId) === String(room.roomId));
     try {
+      // 1. API 호출 (추가/삭제)
       if (isFav) {
         await removeFavorite(room.roomId);
-        removeFavStore(room.roomId);
       } else {
         await addFavorite(room.roomId);
-        addFavStore({ roomId: room.roomId });
       }
+      
+      // 2. [핵심] 서버에서 최신 목록 다시 받아오기
+      // (백엔드 DTO에 건물 이름 등이 포함되어 있으므로, 이걸 받아야 목록 탭에서 제대로 보임)
+      const latestFavs = await getFavorites();
+      
+      // 3. 스토어 업데이트
+      setFavorites(latestFavs);
+      
     } catch (err) {
       console.error("즐겨찾기 변경 실패", err);
       alert("오류가 발생했습니다. 로그인이 되어 있는지 확인해주세요.");
@@ -110,7 +122,6 @@ export default function PlaceDetail({
               </p>
             )}
             
-            {/* ▼▼▼ 조건문 수정됨: 설명도 없을 때만 표시 ▼▼▼ */}
             {!displayDesc && !openingHours && !address && !website && (
               <p className="text-gray-500">표시할 정보가 없습니다.</p>
             )}
