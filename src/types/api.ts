@@ -69,5 +69,13 @@ export type RoomSummary = {
 };
 
 export type FavoriteItem = {
-  roomId: string | number;
+  favoriteId: number;
+  roomId: number;
+  roomNumber?: string;
+  roomName?: string;
+  // ▼▼▼ 백엔드 DTO에 맞춰 추가된 정보들 ▼▼▼
+  buildingId?: number;
+  buildingName?: string;
+  floorId?: number;
+  floorLevel?: number;
 };

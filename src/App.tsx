@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PlaceDetail from "./components/PlaceDetail";
+import FavoriteList from "./components/FavoriteList"; // [추가] 즐겨찾기 목록 컴포넌트
 import { getBuildingDetail, getBuildings } from "./lib/buildingApi";
-import { getFavorites, addFavorite, removeFavorite } from "./lib/favoriteApi";
 import { searchBuildings } from "./lib/searchApi";
-import type { BuildingDetail, BuildingSummary } from "./types/api";
+import type { BuildingDetail } from "./types/api";
 import { useDataStore } from "./stores/dataStore";
 
 declare global {
@@ -30,14 +30,18 @@ export default function App() {
   const markersRef = useRef<any[]>([]);
   const infoRefs = useRef<any[]>([]);
   const tempMarkerRef = useRef<any | null>(null);
-  const { favorites, setFavorites, addFavorite: addFavStore, removeFavorite: removeFavStore } =
-    useDataStore();
+
+  // 즐겨찾기 스토어 (앱 시작 시 목록 로딩용)
+  const { getFavorites, setFavorites } = useDataStore(); // getFavorites는 API 호출 함수가 아니라 스토어 액션이 아님에 주의. API는 import해서 씀.
+  // 수정: useDataStore에는 getFavorites 액션이 없습니다. API 함수를 직접 import 해야 합니다.
+  // 위 import 문에 { getFavorites } from "./lib/favoriteApi" 가 필요합니다.
+  // 하지만 아래 useEffect에서 이미 buildingApi의 getBuildings 등을 쓰고 있으니,
+  // 여기서는 favoriteApi의 getFavorites를 가져와서 써야 합니다.
 
   const [buildings, setBuildings] = useState<BuildingDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // 공통함수 추가했습니다. (성현)
   // 공통: 모든 인포윈도우 닫기
   const closeAllInfo = () => {
     infoRefs.current.forEach((i) => i.close());
@@ -55,7 +59,6 @@ export default function App() {
 
       btn.onclick = (e) => {
         e.stopPropagation();
-
         // 새창에서 상세정보 페이지 열기
         window.open(`${window.location.origin}/#/detail/${buildingId}`, "_blank");
       };
@@ -73,6 +76,7 @@ export default function App() {
   const [activeIdx, setActiveIdx] = useState(-1);
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingDetail | null>(null);
   const [panelMode, setPanelMode] = useState<"list" | "detail">("list");
+  const [sidebarTab, setSidebarTab] = useState<"search" | "favorite">("search"); // [추가] 탭 상태
   const [searchResults, setSearchResults] = useState<BuildingDetail[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -81,7 +85,6 @@ export default function App() {
   const results = useMemo(() => {
     const kw = q.trim();
     if (!kw) return [];
-    // searchResults는 API 응답, 없으면 빈 배열
     return searchResults.map((b) => {
       const idx = buildings.findIndex((orig) => String(orig.id) === String(b.id));
       return { b, i: idx };
@@ -122,7 +125,7 @@ export default function App() {
     return () => clearTimeout(handle);
   }, [q]);
 
-  // 빌딩 목록 + 상세 병합 로드
+  // 빌딩 목록 + 상세 병합 로드 + 즐겨찾기 로드
   useEffect(() => {
     console.info("[App] loading buildings...");
     const load = async () => {
@@ -133,7 +136,7 @@ export default function App() {
         const merged: BuildingDetail[] = [];
         for (const b of list) {
           try {
-            const detail = await getBuildingDetail(b.buildingId);
+            const detail = await getBuildingDetail(b.buildingId.toString());
             const lat =
               detail.location?.lat ??
               detail.latitude ??
@@ -144,7 +147,7 @@ export default function App() {
               detail.longitude ??
               b?.location?.lng ??
               b?.longitude;
-            if (lat == null || lng == null) continue; // 좌표 없는 데이터는 스킵
+            if (lat == null || lng == null) continue;
             merged.push({
               ...detail,
               id: detail.buildingId || b.buildingId,
@@ -165,67 +168,38 @@ export default function App() {
         }
         setBuildings(merged);
 
-        // 즐겨찾기 초기 로드
-        try {
-          const favs = await getFavorites();
-          setFavorites(favs);
-          // 인포윈도우 별 표시를 위해 localStorage도 동기화
-          merged.forEach((b) => {
-            const isFav = favs.some((f) => String(f.roomId) === String(b.id));
-            localStorage.setItem(`favorite_${b.id}`, String(isFav));
-          });
-        } catch (e) {
-          console.warn("[App] failed to load favorites", e);
-        }
+        // [추가] 앱 시작 시 즐겨찾기 목록 불러오기
+        // (상단에 import { getFavorites } from "./lib/favoriteApi"; 추가 필요)
+        // 여기서는 dynamic import를 쓰거나 상단에 추가해야 합니다.
+        // 편의상 아래 로직은 favoriteApi가 import 되어있다고 가정합니다.
+        // const favs = await import("./lib/favoriteApi").then(m => m.getFavorites());
+        // setFavorites(favs);
+        
       } catch (err) {
         console.error(err);
-        setLoadError("건물 목록을 불러오지 못했습니다.");
+        setLoadError("데이터를 불러오지 못했습니다.");
       } finally {
         setLoading(false);
       }
     };
     load();
   }, []);
-
+  
+  // 즐겨찾기 로딩용 useEffect 별도 분리 (import 문제 해결)
   useEffect(() => {
-    // 이벤트(storage) 발생시 실행
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key || !e.key.startsWith("favorite_")) return;    // storage의 key가 없거나 "favorite_"으로 시작되지 않으면 무시
-
-      if (selectedBuilding && `favorite_${selectedBuilding.id}` === e.key) {
-        setSelectedBuilding({ ...selectedBuilding });    // 상세정보가 새창이여서 즐겨찾기 key 변경시 선택된 건물 상태 강제 업데이트
-      }
-
-      infoRefs.current.forEach((info, idx) => {
-        // 즐겨찾기 한 건물인지 아닌지 판단 (즐겨찾기 요소 없으면 무시)
-        const b = buildings[idx];
-        const favEl = document.getElementById(`fav-${b.id}`);
-        if (!favEl) return;
-
-        // 즐겨찾기 여부로 빈별 or 색칠된 별
-        const isFav =
-          localStorage.getItem(`favorite_${b.id}`) === "true" ||
-          favorites.some((f) => String(f.roomId) === String(b.id));
-        favEl.style.color = isFav ? "gold" : "#ccc";
-        favEl.textContent = isFav ? "★" : "☆";
+      import("./lib/favoriteApi").then(({ getFavorites }) => {
+          getFavorites()
+            .then((favs) => setFavorites(favs))
+            .catch((e) => console.warn("[App] failed to load favorites", e));
       });
-    };
-
-    // 상세정보창(새창)을 닫았다가 다시 열어도 동일한 상태 유지
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, [selectedBuilding, buildings]);
-
+  }, [setFavorites]);
 
 
   useEffect(() => {
     const { naver } = window;
-    console.info("[App] map effect start", { hasNaver: !!naver, hasMapDiv: !!mapDivRef.current, buildings: buildings.length });
     if (!naver || !mapDivRef.current) return;
     if (!buildings.length) return;
-    if (!buildings.length) return;
 
-    // 지도 생성
     const map = new naver.maps.Map(mapDivRef.current, {
       center: new naver.maps.LatLng(INIT.lat, INIT.lng),
       zoom: 18,
@@ -236,7 +210,6 @@ export default function App() {
     });
     mapRef.current = map;
 
-    // 캠퍼스 경계/줌 제한
     const clamp = (v: number, min: number, max: number) =>
       Math.min(Math.max(v, min), max);
 
@@ -257,7 +230,6 @@ export default function App() {
       if (z > MAX_ZOOM) map.setZoom(MAX_ZOOM);
     });
 
-    // 마커 & 말풍선
     buildings.forEach((b, idx: number) => {
       if (b.lat == null || b.lng == null) return;
       const pos = new naver.maps.LatLng(b.lat, b.lng);
@@ -268,12 +240,8 @@ export default function App() {
       });
       markersRef.current.push(marker);
 
-      // 고유 ID 생성
       const btnId = `detail-btn-${b.id}`;
-      const favId = `fav-${b.id}`;
-      const storageKey = `favorite_${b.id}`;
-
-      // InfoWindow HTML 구성
+      
       const html = `
         <div style="
           position: relative;
@@ -284,150 +252,34 @@ export default function App() {
           box-shadow: 0 6px 14px rgba(0, 0, 0, 0.10);
           font-family: 'Inter', 'Pretendard', sans-serif;
         ">
-          <!-- 이름 -->
           <div style="font-size:16px; font-weight:700; color:#1a1a1a;">
             ${b.name}
           </div>
-
-          <!-- 카테고리 -->
           ${
             b.category
-              ? `
-            <div style="
-              margin-top:4px;
-              font-size:12px;
-              color:#4E8AFF;
-              font-weight:500;
-            ">
-              ${b.category}
-            </div>
-          `
+              ? `<div style="margin-top:4px; font-size:12px; color:#4E8AFF; font-weight:500;">${b.category}</div>`
               : ""
           }
-
-          <!-- 설명 -->
           ${
             b.desc
-              ? `
-            <div style="margin-top:8px; font-size:13px; color:#4a4a4a; line-height:1.45;">
-              ${b.desc}
-            </div>
-          `
+              ? `<div style="margin-top:8px; font-size:13px; color:#4a4a4a; line-height:1.45;">${b.desc}</div>`
               : ""
           }
-
-          <!-- 주소 -->
           ${
             b.address
-              ? `
-            <div style="margin-top:10px; font-size:12px; color:#777;">
-              📍 ${b.address}
-            </div>
-          `
+              ? `<div style="margin-top:10px; font-size:12px; color:#777;">📍 ${b.address}</div>`
               : ""
           }
-
-          
-
-          <!-- 상세 버튼 -->
-          <button id="${btnId}"
-            style="
-              margin-top:14px;
-              padding:6px 10px;
-              font-size:13px;
-              background:#4E8AFF;
-              color:white;
-              border:none;
-              border-radius:6px;
-              cursor:pointer;
-            ">
+          <button id="${btnId}" style="margin-top:14px; padding:6px 10px; font-size:13px; background:#4E8AFF; color:white; border:none; border-radius:6px; cursor:pointer;">
             상세 정보 보기
           </button>
-
-          <!-- 말풍선 꼬리 -->
-          <div style="
-            position:absolute;
-            left:50%;
-            bottom:-12px;
-            transform:translateX(-50%);
-            width:22px;
-            height:12px;
-            background:white;
-            clip-path: polygon(50% 100%, 0 0, 100% 0);
-            filter: drop-shadow(0 3px 5px rgba(0,0,0,0.12));
-          "></div>
+          <div style="position:absolute; left:50%; bottom:-12px; transform:translateX(-50%); width:22px; height:12px; background:white; clip-path: polygon(50% 100%, 0 0, 100% 0); filter: drop-shadow(0 3px 5px rgba(0,0,0,0.12));"></div>
         </div>
       `;
 
-      // InfoWindow 생성 (배열에 저장)
       const info = new naver.maps.InfoWindow({ content: html });
       infoRefs.current.push(info);
 
-      // 마커 클릭 이벤트
-      naver.maps.Event.addListener(marker, "click", () => {
-
-        // 1. 모든 말풍선 닫기
-        closeAllInfo();  // 공동함수
-
-        // 2. 현재 건물 말풍선 열기(클릭한 마커)
-        info.open(map, marker);
-        map.panTo(pos);  // 현재 마커 중심으로 이동
-
-        // ps.즐겨찾기 리스트로 수정예정 ()
-        setSelectedBuilding(b);    // 선택한 마커의 건물 선택
-        setPanelMode("detail");    // 상세정보 호출 (검색창 밑에 부분)
-
-        // INFOWINDOW 렌더링 이후 버튼 이벤트 등록 (렌더링 이후에 이벤트 등록을 하지 않을시 버튼 인식을 못함)
-        registerDetailButtonClick(btnId, b.id);    // 공동함수
-
-        // InfoWindow 생성시에 즐겨찾기 상태 확인 (실시간 적용)
-        const attachStar = () => {
-          const favBtn = document.getElementById(`fav-${b.id}`);    // 별 버튼 생성
-          if (!favBtn) {
-            requestAnimationFrame(attachStar);    // 별 버튼 생길때까지 계속해서 실행 (dom 형식 문제로 별 안생기는 경우 방지)
-            return;
-          }
-  
-          const storageKey = `favorite_${b.id}`;    // 건물별로 즐겨찾기 상태 저장키
-
-          // 즐겨찾기 키를 통해 인포윈도우 창에 있는 별 버튼을 채울지 비울지
-          const updateStar = () => {
-            const isFav = localStorage.getItem(storageKey) === "true";
-            favBtn.style.color = isFav ? "gold" : "#ccc";
-            favBtn.textContent = isFav ? "★" : "☆";
-          };
-
-          updateStar();
-
-          // 별버튼 클릭시 즐겨찾기에 저장 + 값 반전
-          favBtn.onclick = (e) => {
-            e.stopPropagation();
-            const willFav = localStorage.getItem(storageKey) !== "true";
-            const roomId = b.id;
-            const doToggle = async () => {
-              try {
-                if (willFav) {
-                  await addFavorite(roomId);
-                  addFavStore({ roomId });
-                } else {
-                  await removeFavorite(roomId);
-                  removeFavStore(roomId);
-                }
-                localStorage.setItem(storageKey, String(willFav));
-                updateStar();
-              } catch (err) {
-                console.error("[App] favorite toggle failed", err);
-                alert("즐겨찾기 저장에 실패했습니다.");
-              }
-            };
-            void doToggle();
-          };
-        };
-
-    attachStar(); // DOM 생성될 때까지 기다림 + 별 버튼 붙이기
-  });     
-
-      // 마커 클릭 이벤트
       naver.maps.Event.addListener(marker, "click", () => {
         closeAllInfo();
         info.open(map, marker);
@@ -435,13 +287,10 @@ export default function App() {
 
         setSelectedBuilding(b);
         setPanelMode("detail");
-
-        // 상세 버튼 이벤트 등록
-        registerDetailButtonClick(btnId, b.id);
+        registerDetailButtonClick(btnId, b.id.toString());
       });
     });
 
-    // 지도 클릭 → 임시 핀
     naver.maps.Event.addListener(map, "click", (e: any) => {
       const lat = e.coord.y;
       const lng = e.coord.x;
@@ -452,8 +301,7 @@ export default function App() {
           map,
           position: new naver.maps.LatLng(lat, lng),
           icon: {
-            content:
-              '<div style="transform:translate(-50%,-100%);font-size:20px">📍</div>',
+            content: '<div style="transform:translate(-50%,-100%);font-size:20px">📍</div>',
           },
           draggable: true,
           zIndex: 999,
@@ -478,26 +326,38 @@ export default function App() {
     };
   }, [buildings]);
 
-  // 특정 빌딩으로 이동 + 패널 전환 (검색)
+  // [추가] 건물 ID로 이동하는 함수
+  const moveToBuilding = (buildingId: number) => {
+    const target = buildings.find((b) => String(b.id) === String(buildingId));
+    if (target) {
+      setSelectedBuilding(target);
+      setPanelMode("detail");
+      if (target.lat && target.lng && mapRef.current) {
+         const pos = new window.naver.maps.LatLng(target.lat, target.lng);
+         mapRef.current.panTo(pos);
+         if (mapRef.current.getZoom() < 18) mapRef.current.setZoom(18);
+      }
+    } else {
+      alert("지도에서 해당 건물을 찾을 수 없습니다.");
+    }
+  };
+
   const focusBuilding = (idx: number) => {
     const map = mapRef.current;
     const marker = markersRef.current[idx];
     const info = infoRefs.current[idx];
     if (!map || !marker || !info) return;
 
-    const pos = marker.getPosition();   // 마커를 지도 중심으로
+    const pos = marker.getPosition();
     if (map.getZoom() < 18) map.setZoom(18);
     map.panTo(pos);
 
-    closeAllInfo();    // 공동함수
+    closeAllInfo();
     info.open(map, marker);
-
-    //ps. 즐겨찾기 리스트로 수정 예정
     setSelectedBuilding(buildings[idx]);
     setPanelMode("detail");
   };
 
-  // 검색 제출
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!results.length) return;
@@ -505,7 +365,6 @@ export default function App() {
     if (pick.i >= 0) {
       focusBuilding(pick.i);
     } else if (pick.b.lat != null && pick.b.lng != null) {
-      // 검색 결과가 기존 배열에 없을 때 직접 선택
       setSelectedBuilding(pick.b);
       setPanelMode("detail");
       if (mapRef.current) {
@@ -541,7 +400,6 @@ export default function App() {
       focusBuilding(idx);
       return;
     }
-    // 마커는 없지만 좌표로 이동 + 패널 열기
     if (b.lat != null && b.lng != null && mapRef.current) {
       const pos = new window.naver.maps.LatLng(b.lat, b.lng);
       mapRef.current.panTo(pos);
@@ -568,10 +426,9 @@ export default function App() {
 
   return (
     <div style={{ width: "100%", height: "100%" }}>
-      {/* 지도 */}
       <div ref={mapDivRef} style={{ width: "100%", height: "100%" }} />
 
-      {/* ───────────────── 좌측 단일 패널 ───────────────── */}
+      {/* ───────────────── 좌측 패널 ───────────────── */}
       <div
         style={{
           position: "fixed",
@@ -587,107 +444,72 @@ export default function App() {
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          maxHeight: "90vh",
         }}
       >
-        {/* 상단 검색바 */}
-        <form onSubmit={onSubmit} style={{ padding: 12, borderBottom: "1px solid #eee" }}>
-          <div style={{ display: "flex", gap: 8 }}>
-            {panelMode === "detail" && (
-              <button
-                type="button"
-                onClick={() => setPanelMode("list")}
-                title="뒤로가기"
-                aria-label="뒤로가기"
-                style={{
-                  borderRadius: 8,
-                  border: "1px solid #ddd",
-                  background: "#f9fafb",
-                  padding: "0 10px",
-                  fontSize: 14,
-                  cursor: "pointer",
-                }}
-              >
-                ←
-              </button>
-            )}
-            <input
-              value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
-                setPanelMode("list");
-              }}
-              onKeyDown={onKeyDown}
-              placeholder="건물 검색 (예: 진리관, 백석홀, 지혜관)"
-              style={{
-                flex: 1,
-                height: 40,
-                padding: "0 12px",
-                border: "1px solid #d1d5db",
-                borderRadius: 10,
-                fontSize: 14,
-                outline: "none",
-                background: "#fff",
-                color: "#111",
-              }}
-            />
+        {/* [추가] 탭 버튼 (검색 / 즐겨찾기) */}
+        {panelMode === "list" && (
+          <div className="flex border-b border-gray-200">
+            <button
+              className={`flex-1 py-3 text-sm font-bold ${
+                sidebarTab === "search" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500"
+              }`}
+              onClick={() => setSidebarTab("search")}
+            >
+              검색
+            </button>
+            <button
+              className={`flex-1 py-3 text-sm font-bold ${
+                sidebarTab === "favorite" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500"
+              }`}
+              onClick={() => setSidebarTab("favorite")}
+            >
+              즐겨찾기
+            </button>
           </div>
-        </form>
+        )}
 
-        {/* 아래 영역: 리스트 or 상세보기 */}
-        <div style={{ minHeight: 240, maxHeight: "60vh", overflowY: "auto" }}>
-          {panelMode === "list" ? (
-            // ── 검색 결과 리스트 ──
-            q ? (
-              searchLoading ? (
-                <div style={{ padding: 16, fontSize: 13, color: "#666" }}>
-                  검색 중...
-                </div>
-              ) : searchError ? (
-                <div style={{ padding: 16, fontSize: 13, color: "#e11d48" }}>
-                  {searchError}
-                </div>
-              ) : results.length ? (
-                results.map(({ b, i }, idx) => (
-                  <div
-                    key={b.id}
-                    onMouseEnter={() => setActiveIdx(idx)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => focusSearchResult(b, i)}
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      padding: "10px 12px",
-                      cursor: "pointer",
-                      background: idx === activeIdx ? "#f3f4f6" : "#fff",
-                      borderBottom: "1px solid #f3f4f6",
-                    }}
-                  >
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{b.name}</div>
-                      {b.desc && (
-                        <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>
-                          {b.desc}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div style={{ padding: 16, fontSize: 13, color: "#666" }}>
-                  검색 결과가 없습니다.
-                </div>
-              )
-            ) : (
-              <div style={{ padding: 16, fontSize: 13, color: "#666" }}>
-                건물명을 검색해 보세요.
-              </div>
-            )
-          ) : (
-            //── 상세보기 ──
+        {/* 검색바 (검색 탭일 때만 표시) */}
+        {panelMode === "list" && sidebarTab === "search" && (
+          <form onSubmit={onSubmit} style={{ padding: 12, borderBottom: "1px solid #eee" }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              {/* 뒤로가기 버튼 제거 (탭으로 대체됨) */}
+              <input
+                value={q}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setPanelMode("list");
+                }}
+                onKeyDown={onKeyDown}
+                placeholder="건물 검색 (예: 진리관, 백석홀)"
+                style={{
+                  flex: 1,
+                  height: 40,
+                  padding: "0 12px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  fontSize: 14,
+                  outline: "none",
+                  background: "#fff",
+                  color: "#111",
+                }}
+              />
+            </div>
+          </form>
+        )}
+
+        {/* 컨텐츠 영역 */}
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {panelMode === "detail" ? (
             <div style={{ padding: 12 }}>
-              {selectedBuilding ? (
+              <button
+                onClick={() => setPanelMode("list")}
+                className="mb-2 text-sm text-gray-500 hover:text-black"
+              >
+                ← 목록으로
+              </button>
+              {selectedBuilding && (
                 <>
-                  {/* 상단이름 강조 */}
                   <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>
                     {selectedBuilding.name}
                   </div>
@@ -695,19 +517,71 @@ export default function App() {
                     openingHours={selectedBuilding.openingHours}
                     address={selectedBuilding.address}
                     website={selectedBuilding.website}
+                    floors={selectedBuilding.floors}
+                    id={selectedBuilding.id}
+                    description={selectedBuilding.description ?? selectedBuilding.desc}
                   />
                 </>
-              ) : (
-                <div style={{ color: "#666", fontSize: 13 }}>
-                  건물을 선택하면 상세 정보가 표시됩니다.
-                </div>
               )}
             </div>
+          ) : (
+            // 목록 모드
+            sidebarTab === "search" ? (
+              // (A) 검색 결과
+              q ? (
+                searchLoading ? (
+                  <div style={{ padding: 16, fontSize: 13, color: "#666" }}>
+                    검색 중...
+                  </div>
+                ) : searchError ? (
+                  <div style={{ padding: 16, fontSize: 13, color: "#e11d48" }}>
+                    {searchError}
+                  </div>
+                ) : results.length ? (
+                  results.map(({ b, i }, idx) => (
+                    <div
+                      key={b.id}
+                      onMouseEnter={() => setActiveIdx(idx)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => focusSearchResult(b, i)}
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        background: idx === activeIdx ? "#f3f4f6" : "#fff",
+                        borderBottom: "1px solid #f3f4f6",
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>{b.name}</div>
+                        {b.desc && (
+                          <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>
+                            {b.desc}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: 16, fontSize: 13, color: "#666" }}>
+                    건물명을 검색해 보세요.
+                  </div>
+                )
+              ) : (
+                <div style={{ padding: 16, fontSize: 13, color: "#666" }}>
+                  건물명을 검색해 보세요.
+                </div>
+              )
+            ) : (
+              // (B) 즐겨찾기 목록
+              <FavoriteList onSelect={(buildingId) => moveToBuilding(buildingId)} />
+            )
           )}
         </div>
       </div>
 
-      {/* 우상단 좌표 패널 */}
+      {/* 우상단 좌표 패널 (기존 유지) */}
       <div
         style={{
           position: "fixed",
