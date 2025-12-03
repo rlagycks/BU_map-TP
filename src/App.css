@@ -1,0 +1,159 @@
+/* src/App.css */
+
+.app-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.map-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* --- 좌측 사이드바 스타일 --- */
+.sidebar {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  width: 360px;
+  max-width: 92vw;
+  z-index: 1100;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 90vh;
+}
+
+/* 탭 버튼 영역 */
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.tab-button {
+  flex: 1;
+  padding: 12px 0;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #6b7280;
+}
+
+.tab-button.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+}
+
+/* 검색바 영역 */
+.search-form {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.search-input-wrapper {
+  display: flex;
+  gap: 8px;
+}
+
+.search-input {
+  flex: 1;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 14px;
+  outline: none;
+  background: #fff;
+  color: #111;
+}
+
+/* 컨텐츠 목록 영역 */
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 240px;
+  max-height: 60vh;
+}
+
+/* 검색 결과 아이템 */
+.search-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  background: #fff;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.search-item.active {
+  background: #f3f4f6;
+}
+
+/* 메시지 텍스트 */
+.message-box {
+  padding: 16px;
+  font-size: 13px;
+  color: #666;
+}
+
+.error-text {
+  color: #e11d48;
+}
+
+/* 상세 보기 내부 */
+.detail-view {
+  padding: 12px;
+}
+
+.back-button {
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #6b7280;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.back-button:hover {
+  color: #000;
+}
+
+.detail-title {
+  font-weight: 800;
+  font-size: 18px;
+  margin-bottom: 6px;
+}
+
+/* --- 우상단 좌표 패널 스타일 --- */
+.coordinate-panel {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 13px;
+  min-width: 230px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.coord-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.coord-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
