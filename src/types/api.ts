@@ -79,3 +79,15 @@ export type FavoriteItem = {
   floorId?: number;
   floorLevel?: number;
 };
+
+
+export type SearchResult = {
+  type: string;
+  id: number;
+  displayName: string;
+  subTitle: string;
+  latitude: number;
+  longitude: number;
+  buildingId?: number;
+  floorId?: number;
+};

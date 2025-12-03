@@ -32,11 +32,7 @@ export default function App() {
   const tempMarkerRef = useRef<any | null>(null);
 
   // 즐겨찾기 스토어 (앱 시작 시 목록 로딩용)
-  const { getFavorites, setFavorites } = useDataStore(); // getFavorites는 API 호출 함수가 아니라 스토어 액션이 아님에 주의. API는 import해서 씀.
-  // 수정: useDataStore에는 getFavorites 액션이 없습니다. API 함수를 직접 import 해야 합니다.
-  // 위 import 문에 { getFavorites } from "./lib/favoriteApi" 가 필요합니다.
-  // 하지만 아래 useEffect에서 이미 buildingApi의 getBuildings 등을 쓰고 있으니,
-  // 여기서는 favoriteApi의 getFavorites를 가져와서 써야 합니다.
+  const { setFavorites } = useDataStore(); 
 
   const [buildings, setBuildings] = useState<BuildingDetail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,12 +102,16 @@ export default function App() {
       setSearchError(null);
       searchBuildings(kw)
         .then((res) => {
-          const normalized = res.map((b) => ({
-            ...b,
-            id: b.id ?? b.buildingId,
-            lat: b.lat ?? b.latitude ?? b.location?.lat,
-            lng: b.lng ?? b.longitude ?? b.location?.lng,
-          })) as BuildingDetail[];
+          // SearchResult -> BuildingDetail 변환
+          const normalized: BuildingDetail[] = res.map((r) => ({
+            id: r.id,
+            buildingId: r.buildingId ?? r.id, // 건물이면 본인 ID, 아니면 소속 건물 ID
+            name: r.displayName,
+            lat: r.latitude,
+            lng: r.longitude,
+            desc: r.subTitle,     // 부가 설명 (예: "본부동 5층")
+            category: r.type,     // 타입 (BUILDING, ROOM, FACILITY)
+          }));
           setSearchResults(normalized);
         })
         .catch((err) => {
@@ -168,13 +168,6 @@ export default function App() {
         }
         setBuildings(merged);
 
-        // [추가] 앱 시작 시 즐겨찾기 목록 불러오기
-        // (상단에 import { getFavorites } from "./lib/favoriteApi"; 추가 필요)
-        // 여기서는 dynamic import를 쓰거나 상단에 추가해야 합니다.
-        // 편의상 아래 로직은 favoriteApi가 import 되어있다고 가정합니다.
-        // const favs = await import("./lib/favoriteApi").then(m => m.getFavorites());
-        // setFavorites(favs);
-        
       } catch (err) {
         console.error(err);
         setLoadError("데이터를 불러오지 못했습니다.");
@@ -395,18 +388,37 @@ export default function App() {
     alert("좌표를 복사했습니다:\n" + text);
   };
 
+  // ▼▼▼ 수정된 부분: 부모 건물을 찾아 보여주는 로직 ▼▼▼
   const focusSearchResult = (b: BuildingDetail, idx: number) => {
     if (idx >= 0) {
       focusBuilding(idx);
       return;
     }
+
+    // 1. 좌표 이동
     if (b.lat != null && b.lng != null && mapRef.current) {
       const pos = new window.naver.maps.LatLng(b.lat, b.lng);
       mapRef.current.panTo(pos);
     }
-    setSelectedBuilding(b);
+
+    // 2. 부모 건물 찾기 및 선택
+    // buildingId가 있고, 본인의 id와 다르면 부모 건물을 찾아서 선택
+    if (b.buildingId && String(b.buildingId) !== String(b.id)) {
+      const parent = buildings.find((parent) => String(parent.id) === String(b.buildingId));
+      if (parent) {
+        setSelectedBuilding(parent);
+      } else {
+        // 부모를 못 찾으면 그냥 자신을 표시
+        setSelectedBuilding(b);
+      }
+    } else {
+      // 건물이면 자신을 표시
+      setSelectedBuilding(b);
+    }
+    
     setPanelMode("detail");
   };
+  // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
   if (loadError) {
     return (
@@ -473,7 +485,6 @@ export default function App() {
         {panelMode === "list" && sidebarTab === "search" && (
           <form onSubmit={onSubmit} style={{ padding: 12, borderBottom: "1px solid #eee" }}>
             <div style={{ display: "flex", gap: 8 }}>
-              {/* 뒤로가기 버튼 제거 (탭으로 대체됨) */}
               <input
                 value={q}
                 onChange={(e) => {
