@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import Sidebar from "./components/Sidebar";
+import CoordinatePanel from "./components/CoordinatePanel";
 import { getBuildingDetail, getBuildings } from "./lib/buildingApi";
 import { searchBuildings } from "./lib/searchApi";
 import type { BuildingDetail } from "./types/api";
 import { useDataStore } from "./stores/dataStore";
-
-// 분리한 컴포넌트와 CSS import
-import Sidebar from "./components/Sidebar";
-import CoordinatePanel from "./components/CoordinatePanel";
 import "./App.css";
 
 declare global {
@@ -73,16 +71,21 @@ export default function App() {
   // 새 창 예외 처리
   if (location.pathname.startsWith("/detail")) return null;
 
-  // --- 검색 로직 ---
+  // --- 검색 로직 (ID 충돌 방지 수정됨) ---
   const results = useMemo(() => {
     const kw = q.trim();
     if (!kw) return [];
     return searchResults.map((b) => {
-      const idx = buildings.findIndex((orig) => String(orig.id) === String(b.id));
+      // [수정] 카테고리가 'BUILDING'일 때만 목록에서 찾음 (강의실 ID와 건물 ID 충돌 방지)
+      let idx = -1;
+      if (b.category === 'BUILDING') {
+        idx = buildings.findIndex((orig) => String(orig.id) === String(b.id));
+      }
       return { b, i: idx };
     });
   }, [q, searchResults, buildings]);
 
+  // 검색 API
   useEffect(() => {
     const kw = q.trim();
     if (!kw) {
@@ -96,15 +99,25 @@ export default function App() {
       setSearchError(null);
       searchBuildings(kw)
         .then((res) => {
-          const normalized: BuildingDetail[] = res.map((r) => ({
-            id: r.id,
-            buildingId: r.buildingId ?? r.id,
-            name: r.displayName,
-            lat: r.latitude,
-            lng: r.longitude,
-            desc: r.subTitle,
-            category: r.type,
-          }));
+          const normalized: BuildingDetail[] = res.map((r) => {
+            // 건물 이름 찾아서 붙이기 로직
+            let description = r.subTitle;
+            if (r.type !== 'BUILDING' && r.buildingId) {
+                const parent = buildings.find(b => String(b.id) === String(r.buildingId));
+                if (parent) {
+                    description = `[${parent.name}] ${description || ''}`;
+                }
+            }
+            return {
+              id: r.id,
+              buildingId: r.buildingId ?? r.id,
+              name: r.displayName,
+              lat: r.latitude,
+              lng: r.longitude,
+              desc: description,
+              category: r.type,
+            };
+          });
           setSearchResults(normalized);
         })
         .catch((err) => {
@@ -115,7 +128,7 @@ export default function App() {
         .finally(() => setSearchLoading(false));
     }, 300);
     return () => clearTimeout(handle);
-  }, [q]);
+  }, [q, buildings]);
 
   // --- 초기 데이터 로딩 ---
   useEffect(() => {
@@ -183,6 +196,7 @@ export default function App() {
         map.setCenter(new naver.maps.LatLng(clampedLat, clampedLng));
       }
     };
+
     naver.maps.Event.addListener(map, "dragend", keepInBounds);
     naver.maps.Event.addListener(map, "idle", keepInBounds);
     naver.maps.Event.addListener(map, "zoom_changed", () => {
@@ -198,7 +212,6 @@ export default function App() {
       markersRef.current.push(marker);
 
       const btnId = `detail-btn-${b.id}`;
-      // InfoWindow 내용도 분리하고 싶지만, 네이버 지도 API 특성상 문자열로 유지합니다.
       const html = `
         <div style="position: relative; background: #ffffff; padding: 14px 16px; border-radius: 0px; max-width: 240px; box-shadow: 0 6px 14px rgba(0, 0, 0, 0.10); font-family: 'Inter', 'Pretendard', sans-serif;">
           <div style="font-size:16px; font-weight:700; color:#1a1a1a;">${b.name}</div>
@@ -327,21 +340,33 @@ export default function App() {
   };
 
   const focusSearchResult = (b: BuildingDetail, idx: number) => {
+    // (1) 이미 목록에 있는 건물인 경우 (ID 충돌 방지된 idx 사용)
     if (idx >= 0) {
       focusBuilding(idx);
       return;
     }
+
+    // (2) 좌표 이동
     if (b.lat != null && b.lng != null && mapRef.current) {
       const pos = new window.naver.maps.LatLng(b.lat, b.lng);
       mapRef.current.panTo(pos);
     }
+
+    // (3) 부모 건물 찾기 로직
     if (b.buildingId && String(b.buildingId) !== String(b.id)) {
-      const parent = buildings.find((parent) => String(parent.id) === String(b.buildingId));
-      if (parent) setSelectedBuilding(parent);
-      else setSelectedBuilding(b);
+      const parent = buildings.find((p) => String(p.id) === String(b.buildingId));
+      
+      if (parent) {
+        setSelectedBuilding(parent);
+      } else {
+        // 부모를 못 찾았으니 어쩔 수 없이 자신을 표시
+        setSelectedBuilding(b);
+      }
     } else {
+      // 건물이거나 소속 정보가 없으면 자신을 표시
       setSelectedBuilding(b);
     }
+    
     setPanelMode("detail");
   };
 
