@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import PlaceDetail from "./PlaceDetail";
 import FavoriteList from "./FavoriteList";
+import MyPage from "./MyPage"; // [추가]
 import type { BuildingDetail } from "../types/api";
+import { FaUserCircle } from "react-icons/fa"; // [추가] 아이콘
 
 type SidebarProps = {
   panelMode: "list" | "detail";
@@ -40,11 +42,23 @@ export default function Sidebar({
   selectedBuilding,
   moveToBuilding,
 }: SidebarProps) {
+  // [추가] 마이페이지 표시 여부 상태
+  const [showMyPage, setShowMyPage] = useState(false);
+
+  // 마이페이지 모드일 때
+  if (showMyPage) {
+    return (
+      <div className="sidebar">
+        <MyPage onBack={() => setShowMyPage(false)} />
+      </div>
+    );
+  }
+
   return (
     <div className="sidebar">
-      {/* 탭 버튼 */}
+      {/* 1. 상단 탭 & 마이페이지 버튼 */}
       {panelMode === "list" && (
-        <div className="sidebar-tabs">
+        <div className="sidebar-tabs flex items-center pr-2">
           <button
             className={`tab-button ${sidebarTab === "search" ? "active" : ""}`}
             onClick={() => setSidebarTab("search")}
@@ -57,10 +71,19 @@ export default function Sidebar({
           >
             즐겨찾기
           </button>
+          
+          {/* [추가] 마이페이지 진입 버튼 */}
+          <button
+            onClick={() => setShowMyPage(true)}
+            className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+            title="마이페이지"
+          >
+            <FaUserCircle size={24} />
+          </button>
         </div>
       )}
 
-      {/* 검색바 */}
+      {/* 2. 검색바 */}
       {panelMode === "list" && sidebarTab === "search" && (
         <form onSubmit={onSubmit} className="search-form">
           <div className="search-input-wrapper">
@@ -78,7 +101,7 @@ export default function Sidebar({
         </form>
       )}
 
-      {/* 컨텐츠 영역 */}
+      {/* 3. 컨텐츠 영역 */}
       <div className="sidebar-content">
         {panelMode === "detail" ? (
           <div className="detail-view">
@@ -94,13 +117,15 @@ export default function Sidebar({
                   website={selectedBuilding.website}
                   floors={selectedBuilding.floors}
                   id={selectedBuilding.id}
-                  description={selectedBuilding.description ?? selectedBuilding.desc}
+                  description={
+                    selectedBuilding.description ?? selectedBuilding.desc
+                  }
                 />
               </>
             )}
           </div>
         ) : sidebarTab === "search" ? (
-          // 검색 결과 목록
+          // (A) 검색 결과 목록
           q ? (
             loading ? (
               <div className="message-box">검색 중...</div>
@@ -113,12 +138,18 @@ export default function Sidebar({
                   onMouseEnter={() => setActiveIdx(idx)}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => focusSearchResult(b, i)}
-                  className={`search-item ${idx === activeIdx ? "active" : ""}`}
+                  className={`search-result-item ${
+                    idx === activeIdx ? "active" : ""
+                  }`}
                 >
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13 }}>{b.name}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>
+                      {b.name}
+                    </div>
                     {b.desc && (
-                      <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>
+                      <div
+                        style={{ fontSize: 12, color: "#555", marginTop: 2 }}
+                      >
                         {b.desc}
                       </div>
                     )}
@@ -132,7 +163,7 @@ export default function Sidebar({
             <div className="message-box">건물명을 검색해 보세요.</div>
           )
         ) : (
-          // 즐겨찾기 목록
+          // (B) 즐겨찾기 목록
           <FavoriteList onSelect={(buildingId) => moveToBuilding(buildingId)} />
         )}
       </div>

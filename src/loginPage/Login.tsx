@@ -34,9 +34,15 @@ function Login() {
     setError(null);
 
     loginApi(payload)
-      .then((tokens) => {
-        setTokens(tokens);
-        setUser({ student_id });
+      .then((response) => {
+        const { accessToken, refreshToken, studentId, nickname } = response;
+
+        // 1. 토큰 정보 저장 (AuthTokens 타입에 맞춰 전체 저장)
+        setTokens({ accessToken, refreshToken, studentId, nickname });
+        
+        // 2. 사용자 프로필 정보 저장 (닉네임 포함)
+        setUser({ student_id: studentId, nickname: nickname });
+        
         pushToast({ message: "로그인에 성공했습니다.", type: "success" });
         navigate("/app");
       })
@@ -56,6 +62,7 @@ function Login() {
         <img 
           src={logo}
           className="img"
+          alt="Logo"
           style={{
             width:"161px",
             height:"161px"

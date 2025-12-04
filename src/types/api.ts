@@ -2,6 +2,8 @@
 export type AuthTokens = {
   accessToken: string;
   refreshToken: string;
+  studentId: string;
+  nickname: string;
 };
 
 export type SignupRequest = {
