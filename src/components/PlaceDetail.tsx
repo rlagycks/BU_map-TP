@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { BuildingDetail, FloorSummary, AvailableRoom, RoomSummary } from "../types/api";
+import type { BuildingDetail, FloorSummary, AvailableRoom } from "../types/api";
 import { getAvailableRooms } from "../lib/floorApi";
 import { FaStar, FaRegStar } from "react-icons/fa";
 import { getFavorites, addFavorite, removeFavorite } from "../lib/favoriteApi";
@@ -10,7 +10,6 @@ type PlaceDetailProps = Pick<
   "openingHours" | "address" | "website" | "floors" | "id" | "description" | "desc"
 >;
 
-// 요일 목록
 const DAYS = [
   { val: 1, label: "월" },
   { val: 2, label: "화" },
@@ -21,6 +20,23 @@ const DAYS = [
   { val: 7, label: "일" },
 ];
 
+// ▼▼▼ [추가] 현재 시간 기준 기본값 계산 함수 ▼▼▼
+const getSmartDefaults = () => {
+  const now = new Date();
+  const day = now.getDay() || 7; // 0(일) -> 7로 보정
+  const h = now.getHours();
+  
+  // 시작: 현재 시각 (분은 00분으로 고정, 예: 14:42 -> 14:00)
+  const start = `${String(h).padStart(2, "0")}:00`;
+  
+  // 종료: 1시간 뒤 (24시 넘어가면 23:59로 고정)
+  const endH = h + 1;
+  const end = endH >= 24 ? "23:59" : `${String(endH).padStart(2, "0")}:00`;
+
+  return { day, start, end };
+};
+// ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
 export default function PlaceDetail({
   openingHours,
   address,
@@ -29,22 +45,23 @@ export default function PlaceDetail({
   description,
   desc,
 }: PlaceDetailProps) {
-  // 탭: info(정보), allroom(층별안내), emptyroom(빈강의실), review(리뷰)
   const [activeTab, setActiveTab] = useState<"info" | "allroom" | "emptyroom" | "review">("info");
-  
   const [selectedFloor, setSelectedFloor] = useState<FloorSummary | null>(null);
   
-  // 빈 강의실 검색용 상태
-  const [searchDay, setSearchDay] = useState(new Date().getDay() || 7); // 오늘 요일 (일요일0 -> 7로 보정 필요하지만 편의상 기본값)
-  const [searchStart, setSearchStart] = useState("09:00");
-  const [searchEnd, setSearchEnd] = useState("11:00");
+  // ▼▼▼ [수정] 스마트 디폴트값으로 초기화 ▼▼▼
+  const defaults = useMemo(getSmartDefaults, []); // 컴포넌트가 뜰 때 딱 한 번 계산
+  
+  const [searchDay, setSearchDay] = useState(defaults.day);
+  const [searchStart, setSearchStart] = useState(defaults.start);
+  const [searchEnd, setSearchEnd] = useState(defaults.end);
+  // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
   const [availableRooms, setAvailableRooms] = useState<AvailableRoom[] | null>(null);
   const [emptyLoading, setEmptyLoading] = useState(false);
   const [emptyError, setEmptyError] = useState<string | null>(null);
 
   const { favorites, setFavorites } = useDataStore();
 
-  // 기본 층 선택 (데이터 로드 시)
   useEffect(() => {
     if (floors && floors.length) {
       setSelectedFloor(floors[0]);
@@ -53,11 +70,8 @@ export default function PlaceDetail({
     }
   }, [floors]);
 
-  // 층 목록
   const floorOptions = useMemo(() => floors ?? [], [floors]);
 
-  // 즐겨찾기 토글 (공통 함수)
-  // roomId만 있으면 되므로 타입을 number | string으로 받음
   const toggleFavorite = async (roomId: number | string) => {
     const isFav = favorites.some((f) => String(f.roomId) === String(roomId));
     try {
@@ -74,13 +88,12 @@ export default function PlaceDetail({
     }
   };
 
-  // 빈 강의실 검색 핸들러
   const handleSearchEmpty = () => {
     if (!selectedFloor) return;
     
     setEmptyLoading(true);
     setEmptyError(null);
-    // API 호출 (요일, 시작, 종료 시간 전달)
+    
     getAvailableRooms(selectedFloor.floorId, searchDay, searchStart, searchEnd)
       .then((res) => setAvailableRooms(res))
       .catch((err) => {
@@ -91,12 +104,10 @@ export default function PlaceDetail({
       .finally(() => setEmptyLoading(false));
   };
 
-  // 설명 텍스트
   const displayDesc = description?.trim() || desc?.trim();
 
   return (
     <div className="mt-4 bg-white rounded-2xl shadow-inner w-full max-w-md overflow-hidden">
-      {/* 상단 탭 버튼 */}
       <div className="flex border-b border-gray-200 overflow-x-auto">
         {[
           { key: "info", label: "정보" },
@@ -136,7 +147,7 @@ export default function PlaceDetail({
           </div>
         )}
 
-        {/* 층 선택 공통 UI (층별안내 or 빈강의실일 때 노출) */}
+        {/* 층 선택 공통 UI */}
         {(activeTab === "allroom" || activeTab === "emptyroom") && (
           <div className="flex items-center gap-2 border-b pb-2">
              <span className="text-gray-600 font-bold">층 선택:</span>
@@ -145,7 +156,6 @@ export default function PlaceDetail({
                onChange={(e) => {
                  const f = floorOptions.find(x => String(x.floorId) === e.target.value);
                  setSelectedFloor(f ?? null);
-                 // 층이 바뀌면 빈강의실 목록은 초기화
                  if (activeTab === "emptyroom") setAvailableRooms(null);
                }}
                className="border border-gray-300 rounded px-2 py-1"
@@ -159,7 +169,7 @@ export default function PlaceDetail({
           </div>
         )}
 
-        {/* 2. 층별안내 탭 (전체 강의실 목록) */}
+        {/* 2. 층별안내 탭 */}
         {activeTab === "allroom" && selectedFloor && (
           <div>
              <h3 className="font-bold mb-2 text-gray-800">
@@ -185,7 +195,7 @@ export default function PlaceDetail({
           </div>
         )}
 
-        {/* 3. 빈 강의실 탭 (시간 검색) */}
+        {/* 3. 빈 강의실 탭 */}
         {activeTab === "emptyroom" && selectedFloor && (
           <div className="space-y-3">
             {/* 검색 조건 입력 */}
