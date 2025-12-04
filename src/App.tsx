@@ -47,6 +47,9 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<BuildingDetail[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  
+  // [추가] 상세 정보 로딩 상태
+  const [detailLoading, setDetailLoading] = useState(false);
 
   // --- 헬퍼 함수들 ---
   const closeAllInfo = () => {
@@ -68,15 +71,37 @@ export default function App() {
     });
   };
 
-  // 새 창 예외 처리
+  // [추가] 상세 정보 가져오기 및 선택 함수
+  const selectBuildingWithFetch = async (buildingId: number | string) => {
+    setPanelMode("detail");
+    setDetailLoading(true);
+    try {
+        const detail = await getBuildingDetail(String(buildingId));
+        
+        // 받아온 상세 정보 정규화
+        const normalized: BuildingDetail = {
+            ...detail,
+            id: detail.buildingId ?? buildingId,
+            lat: detail.latitude ?? detail.location?.lat,
+            lng: detail.longitude ?? detail.location?.lng,
+        };
+        
+        setSelectedBuilding(normalized);
+    } catch (e) {
+        console.error("상세 정보 로딩 실패", e);
+        alert("건물 정보를 불러오는데 실패했습니다.");
+    } finally {
+        setDetailLoading(false);
+    }
+  };
+
   if (location.pathname.startsWith("/detail")) return null;
 
-  // --- 검색 로직 (ID 충돌 방지 수정됨) ---
+  // --- 검색 로직 ---
   const results = useMemo(() => {
     const kw = q.trim();
     if (!kw) return [];
     return searchResults.map((b) => {
-      // [수정] 카테고리가 'BUILDING'일 때만 목록에서 찾음 (강의실 ID와 건물 ID 충돌 방지)
       let idx = -1;
       if (b.category === 'BUILDING') {
         idx = buildings.findIndex((orig) => String(orig.id) === String(b.id));
@@ -100,7 +125,6 @@ export default function App() {
       searchBuildings(kw)
         .then((res) => {
           const normalized: BuildingDetail[] = res.map((r) => {
-            // 건물 이름 찾아서 붙이기 로직
             let description = r.subTitle;
             if (r.type !== 'BUILDING' && r.buildingId) {
                 const parent = buildings.find(b => String(b.id) === String(r.buildingId));
@@ -130,29 +154,24 @@ export default function App() {
     return () => clearTimeout(handle);
   }, [q, buildings]);
 
-  // --- 초기 데이터 로딩 ---
+  // --- [수정] 초기 데이터 로딩 (목록만 가져오기) ---
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       setLoadError(null);
       try {
+        // 1. 건물 목록만 가져옴 (상세 호출 루프 제거)
         const list = await getBuildings();
-        const merged: BuildingDetail[] = [];
-        for (const b of list) {
-          try {
-            const detail = await getBuildingDetail(b.buildingId.toString());
-            const lat = detail.location?.lat ?? detail.latitude ?? b?.location?.lat ?? b?.latitude;
-            const lng = detail.location?.lng ?? detail.longitude ?? b?.location?.lng ?? b?.longitude;
-            if (lat == null || lng == null) continue;
-            merged.push({ ...detail, id: detail.buildingId || b.buildingId, lat, lng } as BuildingDetail);
-          } catch {
-            const lat = b?.location?.lat ?? b?.latitude;
-            const lng = b?.location?.lng ?? b?.longitude;
-            if (lat == null || lng == null) continue;
-            merged.push({ id: b.buildingId, name: b.name, lat, lng } as BuildingDetail);
-          }
-        }
-        setBuildings(merged);
+        
+        // 2. 지도에 찍을 수 있게 데이터 변환
+        const initialBuildings: BuildingDetail[] = list.map(b => ({
+            ...b,
+            id: b.buildingId,
+            lat: b.latitude ?? b.location?.lat,
+            lng: b.longitude ?? b.location?.lng,
+        } as BuildingDetail));
+
+        setBuildings(initialBuildings);
       } catch (err) {
         console.error(err);
         setLoadError("데이터를 불러오지 못했습니다.");
@@ -229,8 +248,9 @@ export default function App() {
         closeAllInfo();
         info.open(map, marker);
         map.panTo(pos);
-        setSelectedBuilding(b);
-        setPanelMode("detail");
+        
+        // [수정] 마커 클릭 시 상세 정보 요청
+        selectBuildingWithFetch(b.id!);
         registerDetailButtonClick(btnId, b.id!.toString());
       });
     });
@@ -270,13 +290,13 @@ export default function App() {
   const moveToBuilding = (buildingId: number) => {
     const target = buildings.find((b) => String(b.id) === String(buildingId));
     if (target) {
-      setSelectedBuilding(target);
-      setPanelMode("detail");
+      // [수정] 즐겨찾기 이동 시 좌표 이동 및 상세 정보 요청
       if (target.lat && target.lng && mapRef.current) {
         const pos = new window.naver.maps.LatLng(target.lat, target.lng);
         mapRef.current.panTo(pos);
         if (mapRef.current.getZoom() < 18) mapRef.current.setZoom(18);
       }
+      selectBuildingWithFetch(buildingId);
     } else {
       alert("지도에서 해당 건물을 찾을 수 없습니다.");
     }
@@ -292,8 +312,9 @@ export default function App() {
     map.panTo(pos);
     closeAllInfo();
     info.open(map, marker);
-    setSelectedBuilding(buildings[idx]);
-    setPanelMode("detail");
+    
+    // [수정] 목록 클릭 시에도 상세 정보 요청
+    selectBuildingWithFetch(buildings[idx].id!);
   };
 
   const onSubmit = (e: React.FormEvent) => {
@@ -303,11 +324,11 @@ export default function App() {
     if (pick.i >= 0) {
       focusBuilding(pick.i);
     } else if (pick.b.lat != null && pick.b.lng != null) {
-      setSelectedBuilding(pick.b);
-      setPanelMode("detail");
+      // 검색 결과 직접 선택 시
       if (mapRef.current) {
         mapRef.current.panTo(new window.naver.maps.LatLng(pick.b.lat, pick.b.lng));
       }
+      selectBuildingWithFetch(pick.b.id!);
     }
   };
 
@@ -340,34 +361,22 @@ export default function App() {
   };
 
   const focusSearchResult = (b: BuildingDetail, idx: number) => {
-    // (1) 이미 목록에 있는 건물인 경우 (ID 충돌 방지된 idx 사용)
     if (idx >= 0) {
       focusBuilding(idx);
       return;
     }
-
-    // (2) 좌표 이동
     if (b.lat != null && b.lng != null && mapRef.current) {
       const pos = new window.naver.maps.LatLng(b.lat, b.lng);
       mapRef.current.panTo(pos);
     }
-
-    // (3) 부모 건물 찾기 로직
+    
+    // [수정] 부모 건물 찾기 시 상세 정보 요청
+    let targetId = b.id;
     if (b.buildingId && String(b.buildingId) !== String(b.id)) {
-      const parent = buildings.find((p) => String(p.id) === String(b.buildingId));
-      
-      if (parent) {
-        setSelectedBuilding(parent);
-      } else {
-        // 부모를 못 찾았으니 어쩔 수 없이 자신을 표시
-        setSelectedBuilding(b);
-      }
-    } else {
-      // 건물이거나 소속 정보가 없으면 자신을 표시
-      setSelectedBuilding(b);
+      targetId = b.buildingId;
     }
     
-    setPanelMode("detail");
+    if (targetId) selectBuildingWithFetch(targetId);
   };
 
   if (loadError) return <div className="min-h-screen flex items-center justify-center text-gray-700">{loadError}</div>;
@@ -386,6 +395,7 @@ export default function App() {
         onKeyDown={onKeyDown}
         onSubmit={onSubmit}
         loading={searchLoading}
+        detailLoading={detailLoading} // [추가]
         error={searchError}
         results={results}
         activeIdx={activeIdx}

@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import React from "react";
 import PlaceDetail from "./PlaceDetail";
 import FavoriteList from "./FavoriteList";
-import MyPage from "./MyPage"; // [추가]
+import MyPage from "./MyPage";
 import type { BuildingDetail } from "../types/api";
-import { FaUserCircle } from "react-icons/fa"; // [추가] 아이콘
+import { FaUserCircle } from "react-icons/fa";
 
 type SidebarProps = {
   panelMode: "list" | "detail";
@@ -14,7 +14,8 @@ type SidebarProps = {
   setQ: (val: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
-  loading: boolean;
+  loading: boolean;       // 검색 로딩
+  detailLoading: boolean; // [추가] 상세 정보 로딩
   error: string | null;
   results: { b: BuildingDetail; i: number }[];
   activeIdx: number;
@@ -34,6 +35,7 @@ export default function Sidebar({
   onSubmit,
   onKeyDown,
   loading,
+  detailLoading, // [추가]
   error,
   results,
   activeIdx,
@@ -42,10 +44,8 @@ export default function Sidebar({
   selectedBuilding,
   moveToBuilding,
 }: SidebarProps) {
-  // [추가] 마이페이지 표시 여부 상태
-  const [showMyPage, setShowMyPage] = useState(false);
+  const [showMyPage, setShowMyPage] = React.useState(false);
 
-  // 마이페이지 모드일 때
   if (showMyPage) {
     return (
       <div className="sidebar">
@@ -71,8 +71,6 @@ export default function Sidebar({
           >
             즐겨찾기
           </button>
-          
-          {/* [추가] 마이페이지 진입 버튼 */}
           <button
             onClick={() => setShowMyPage(true)}
             className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
@@ -108,7 +106,11 @@ export default function Sidebar({
             <button onClick={() => setPanelMode("list")} className="back-button">
               ← 목록으로
             </button>
-            {selectedBuilding && (
+            
+            {/* ▼▼▼ 로딩 상태 처리 추가 ▼▼▼ */}
+            {detailLoading ? (
+              <div className="message-box">상세 정보를 불러오는 중...</div>
+            ) : selectedBuilding ? (
               <>
                 <div className="detail-title">{selectedBuilding.name}</div>
                 <PlaceDetail
@@ -122,6 +124,8 @@ export default function Sidebar({
                   }
                 />
               </>
+            ) : (
+               <div className="message-box error-text">건물 정보를 찾을 수 없습니다.</div>
             )}
           </div>
         ) : sidebarTab === "search" ? (
@@ -138,7 +142,7 @@ export default function Sidebar({
                   onMouseEnter={() => setActiveIdx(idx)}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => focusSearchResult(b, i)}
-                  className={`search-result-item ${
+                  className={`search-item ${
                     idx === activeIdx ? "active" : ""
                   }`}
                 >
