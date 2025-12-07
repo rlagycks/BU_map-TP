@@ -30,6 +30,7 @@ export type BuildingSummary = {
   };
   latitude?: number;
   longitude?: number;
+  imageUrl?: string;
 };
 
 export type BuildingDetail = BuildingSummary & {
@@ -44,6 +45,7 @@ export type BuildingDetail = BuildingSummary & {
   category?: string;
   openingHours?: string;
   website?: string;
+  imageUrl?: string;
   floors?: FloorSummary[];
 };
 

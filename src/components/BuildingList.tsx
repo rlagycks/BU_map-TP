@@ -32,7 +32,13 @@ export default function BuildingList({ buildings }: BuildingListProps) {
           address={selected.address}
           openingHours={selected.openingHours}
           website={selected.website}
-          image={selected.image}
+          // ▼▼▼ [수정] image -> imageUrl 로 변경 ▼▼▼
+          imageUrl={selected.imageUrl}
+          // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+          // description, desc, floors 등 필요한 prop이 있다면 추가 전달
+          description={selected.description}
+          desc={selected.desc}
+          floors={selected.floors}
         />
       )}
     </div>
