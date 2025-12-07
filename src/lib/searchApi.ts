@@ -1,7 +1,8 @@
 import api from "./apiClient";
-import type { BuildingDetail } from "../types/api";
+import type { SearchResult } from "../types/api";
 
-export const searchBuildings = async (query: string): Promise<BuildingDetail[]> => {
-  const res = await api.get<BuildingDetail[]>("/api/search", { params: { query } });
+// 반환 타입을 BuildingDetail[] -> SearchResult[] 로 변경
+export const searchBuildings = async (query: string): Promise<SearchResult[]> => {
+  const res = await api.get<SearchResult[]>("/api/search", { params: { query } });
   return res.data;
 };

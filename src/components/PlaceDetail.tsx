@@ -20,22 +20,15 @@ const DAYS = [
   { val: 7, label: "일" },
 ];
 
-// ▼▼▼ [추가] 현재 시간 기준 기본값 계산 함수 ▼▼▼
 const getSmartDefaults = () => {
   const now = new Date();
-  const day = now.getDay() || 7; // 0(일) -> 7로 보정
+  const day = now.getDay() || 7;
   const h = now.getHours();
-  
-  // 시작: 현재 시각 (분은 00분으로 고정, 예: 14:42 -> 14:00)
   const start = `${String(h).padStart(2, "0")}:00`;
-  
-  // 종료: 1시간 뒤 (24시 넘어가면 23:59로 고정)
   const endH = h + 1;
   const end = endH >= 24 ? "23:59" : `${String(endH).padStart(2, "0")}:00`;
-
   return { day, start, end };
 };
-// ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
 export default function PlaceDetail({
   openingHours,
@@ -48,13 +41,11 @@ export default function PlaceDetail({
   const [activeTab, setActiveTab] = useState<"info" | "allroom" | "emptyroom" | "review">("info");
   const [selectedFloor, setSelectedFloor] = useState<FloorSummary | null>(null);
   
-  // ▼▼▼ [수정] 스마트 디폴트값으로 초기화 ▼▼▼
-  const defaults = useMemo(getSmartDefaults, []); // 컴포넌트가 뜰 때 딱 한 번 계산
+  const defaults = useMemo(getSmartDefaults, []);
   
   const [searchDay, setSearchDay] = useState(defaults.day);
   const [searchStart, setSearchStart] = useState(defaults.start);
   const [searchEnd, setSearchEnd] = useState(defaults.end);
-  // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
   const [availableRooms, setAvailableRooms] = useState<AvailableRoom[] | null>(null);
   const [emptyLoading, setEmptyLoading] = useState(false);
@@ -71,6 +62,26 @@ export default function PlaceDetail({
   }, [floors]);
 
   const floorOptions = useMemo(() => floors ?? [], [floors]);
+
+  // ▼▼▼ [추가] 시작 시간 변경 시 종료 시간 자동 보정 핸들러 ▼▼▼
+  const handleStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newStart = e.target.value;
+    setSearchStart(newStart);
+
+    // 종료 시간이 시작 시간보다 빠르거나 같으면, 종료 시간을 '시작 + 1시간'으로 자동 변경
+    if (searchEnd <= newStart) {
+      const [h, m] = newStart.split(":").map(Number);
+      const newEndH = h + 1;
+      
+      // 24시 넘어가면 23:59로 고정
+      const newEnd = newEndH >= 24 
+        ? "23:59" 
+        : `${String(newEndH).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      
+      setSearchEnd(newEnd);
+    }
+  };
+  // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
   const toggleFavorite = async (roomId: number | string) => {
     const isFav = favorites.some((f) => String(f.roomId) === String(roomId));
@@ -130,7 +141,6 @@ export default function PlaceDetail({
       </div>
 
       <div className="p-4 text-sm text-gray-700 space-y-4">
-        {/* 1. 정보 탭 */}
         {activeTab === "info" && (
           <div className="space-y-2">
             {displayDesc && <p>ℹ️ {displayDesc}</p>}
@@ -147,7 +157,6 @@ export default function PlaceDetail({
           </div>
         )}
 
-        {/* 층 선택 공통 UI */}
         {(activeTab === "allroom" || activeTab === "emptyroom") && (
           <div className="flex items-center gap-2 border-b pb-2">
              <span className="text-gray-600 font-bold">층 선택:</span>
@@ -169,7 +178,6 @@ export default function PlaceDetail({
           </div>
         )}
 
-        {/* 2. 층별안내 탭 */}
         {activeTab === "allroom" && selectedFloor && (
           <div>
              <h3 className="font-bold mb-2 text-gray-800">
@@ -195,10 +203,8 @@ export default function PlaceDetail({
           </div>
         )}
 
-        {/* 3. 빈 강의실 탭 */}
         {activeTab === "emptyroom" && selectedFloor && (
           <div className="space-y-3">
-            {/* 검색 조건 입력 */}
             <div className="grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded-lg">
                <div className="col-span-2 flex gap-1 justify-between">
                   {DAYS.map(d => (
@@ -211,7 +217,16 @@ export default function PlaceDetail({
                     </button>
                   ))}
                </div>
-               <input type="time" value={searchStart} onChange={e => setSearchStart(e.target.value)} className="border p-1 rounded text-center"/>
+               
+               {/* ▼▼▼ [수정] onChange 핸들러 교체 ▼▼▼ */}
+               <input 
+                 type="time" 
+                 value={searchStart} 
+                 onChange={handleStartChange} 
+                 className="border p-1 rounded text-center"
+               />
+               {/* ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ */}
+
                <input type="time" value={searchEnd} onChange={e => setSearchEnd(e.target.value)} className="border p-1 rounded text-center"/>
                
                <button onClick={handleSearchEmpty} className="col-span-2 bg-blue-600 text-white py-2 rounded font-bold hover:bg-blue-700 transition">
@@ -219,7 +234,6 @@ export default function PlaceDetail({
                </button>
             </div>
 
-            {/* 결과 목록 */}
             {emptyLoading && <div className="text-center text-gray-500">검색 중...</div>}
             {emptyError && <div className="text-center text-red-500">{emptyError}</div>}
             
@@ -248,7 +262,6 @@ export default function PlaceDetail({
           </div>
         )}
 
-        {/* 4. 리뷰 탭 */}
         {activeTab === "review" && (
           <div className="text-gray-500 italic">추가 필요</div>
         )}

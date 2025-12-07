@@ -48,7 +48,7 @@ export default function App() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   
-  // [추가] 상세 정보 로딩 상태
+  // 상세 정보 로딩 상태
   const [detailLoading, setDetailLoading] = useState(false);
 
   // --- 헬퍼 함수들 ---
@@ -71,7 +71,7 @@ export default function App() {
     });
   };
 
-  // [추가] 상세 정보 가져오기 및 선택 함수
+  // 상세 정보 가져오기 및 선택 함수
   const selectBuildingWithFetch = async (buildingId: number | string) => {
     setPanelMode("detail");
     setDetailLoading(true);
@@ -154,13 +154,13 @@ export default function App() {
     return () => clearTimeout(handle);
   }, [q, buildings]);
 
-  // --- [수정] 초기 데이터 로딩 (목록만 가져오기) ---
+  // --- 초기 데이터 로딩 (목록만 가져오기) ---
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       setLoadError(null);
       try {
-        // 1. 건물 목록만 가져옴 (상세 호출 루프 제거)
+        // 1. 건물 목록만 가져옴
         const list = await getBuildings();
         
         // 2. 지도에 찍을 수 있게 데이터 변환
@@ -249,7 +249,7 @@ export default function App() {
         info.open(map, marker);
         map.panTo(pos);
         
-        // [수정] 마커 클릭 시 상세 정보 요청
+        // 마커 클릭 시 상세 정보 요청
         selectBuildingWithFetch(b.id!);
         registerDetailButtonClick(btnId, b.id!.toString());
       });
@@ -290,7 +290,7 @@ export default function App() {
   const moveToBuilding = (buildingId: number) => {
     const target = buildings.find((b) => String(b.id) === String(buildingId));
     if (target) {
-      // [수정] 즐겨찾기 이동 시 좌표 이동 및 상세 정보 요청
+      // 즐겨찾기 이동 시 좌표 이동 및 상세 정보 요청
       if (target.lat && target.lng && mapRef.current) {
         const pos = new window.naver.maps.LatLng(target.lat, target.lng);
         mapRef.current.panTo(pos);
@@ -313,7 +313,7 @@ export default function App() {
     closeAllInfo();
     info.open(map, marker);
     
-    // [수정] 목록 클릭 시에도 상세 정보 요청
+    // 목록 클릭 시에도 상세 정보 요청
     selectBuildingWithFetch(buildings[idx].id!);
   };
 
@@ -360,17 +360,35 @@ export default function App() {
     setClicked(null);
   };
 
+  // ▼▼▼ [수정] 검색 결과 포커스 및 이동 로직 (부모 건물 이동 기능 추가) ▼▼▼
   const focusSearchResult = (b: BuildingDetail, idx: number) => {
+    // 1. 이미 목록에 있는 건물인 경우 -> 해당 건물로 포커스
     if (idx >= 0) {
       focusBuilding(idx);
       return;
     }
-    if (b.lat != null && b.lng != null && mapRef.current) {
-      const pos = new window.naver.maps.LatLng(b.lat, b.lng);
-      mapRef.current.panTo(pos);
+
+    // 2. 지도 이동 좌표 결정
+    let movePos = null;
+
+    // (A) 검색 결과 자체에 좌표가 있는 경우 (예: 건물)
+    if (b.lat != null && b.lng != null) {
+      movePos = new window.naver.maps.LatLng(b.lat, b.lng);
+    } 
+    // (B) 좌표가 없는 경우 (예: 강의실, 보건실 등) -> 부모 건물을 찾아서 이동
+    else if (b.buildingId) {
+      const parent = buildings.find((p) => String(p.id) === String(b.buildingId));
+      if (parent && parent.lat && parent.lng) {
+        movePos = new window.naver.maps.LatLng(parent.lat, parent.lng);
+      }
+    }
+
+    // (C) 지도 이동 실행
+    if (movePos && mapRef.current) {
+      mapRef.current.panTo(movePos);
     }
     
-    // [수정] 부모 건물 찾기 시 상세 정보 요청
+    // 3. 상세 정보 패널 열기 (부모 건물 ID로 상세 요청)
     let targetId = b.id;
     if (b.buildingId && String(b.buildingId) !== String(b.id)) {
       targetId = b.buildingId;
@@ -378,6 +396,7 @@ export default function App() {
     
     if (targetId) selectBuildingWithFetch(targetId);
   };
+  // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
   if (loadError) return <div className="min-h-screen flex items-center justify-center text-gray-700">{loadError}</div>;
 
@@ -395,7 +414,7 @@ export default function App() {
         onKeyDown={onKeyDown}
         onSubmit={onSubmit}
         loading={searchLoading}
-        detailLoading={detailLoading} // [추가]
+        detailLoading={detailLoading}
         error={searchError}
         results={results}
         activeIdx={activeIdx}
